@@ -42,19 +42,37 @@ const DEFAULT_SCHEDULE: StudyTask[] = [
   { id: 't5', startTime: '14:30', endTime: '16:00', title: 'Lunch & Mental Reset', desc: 'Step away completely.', studyHours: 0, priority: 'Medium' }
 ];
 
+export const getCalendarColor = (colorId?: string) => {
+  const colors: Record<string, { bg: string, text: string, border: string }> = {
+    '1': { bg: 'bg-[#7986cb]/20', text: 'text-[#7986cb]', border: 'border-[#7986cb]' }, // Lavender
+    '2': { bg: 'bg-[#33b679]/20', text: 'text-[#33b679]', border: 'border-[#33b679]' }, // Sage
+    '3': { bg: 'bg-[#8e24aa]/20', text: 'text-[#ba68c8]', border: 'border-[#8e24aa]' }, // Grape
+    '4': { bg: 'bg-[#e67c73]/20', text: 'text-[#e67c73]', border: 'border-[#e67c73]' }, // Flamingo
+    '5': { bg: 'bg-[#f6c026]/20', text: 'text-[#f6c026]', border: 'border-[#f6c026]' }, // Banana
+    '6': { bg: 'bg-[#f5511d]/20', text: 'text-[#f5511d]', border: 'border-[#f5511d]' }, // Tangerine
+    '7': { bg: 'bg-[#039be5]/20', text: 'text-[#039be5]', border: 'border-[#039be5]' }, // Peacock
+    '8': { bg: 'bg-[#616161]/20', text: 'text-[#a1a1a1]', border: 'border-[#616161]' }, // Graphite
+    '9': { bg: 'bg-[#3f51b5]/20', text: 'text-[#7986cb]', border: 'border-[#3f51b5]' }, // Blueberry
+    '10': { bg: 'bg-[#0b8043]/20', text: 'text-[#33b679]', border: 'border-[#0b8043]' }, // Basil
+    '11': { bg: 'bg-[#d60000]/20', text: 'text-[#e67c73]', border: 'border-[#d60000]' }, // Tomato
+    'default': { bg: 'bg-[#00f2fe]/10', text: 'text-[#00f2fe]', border: 'border-[#00f2fe]/50' }
+  };
+  return colors[colorId || 'default'] || colors['default'];
+};
+
 export default function App() {
   const [schedule, setSchedule] = useState<StudyTask[]>([]);
   const [completedTasks, setCompletedTasks] = useState<Record<string, boolean>>({});
   const [token, setToken] = useState<string | null>(() => {
     try {
-      return sessionStorage.getItem('google_access_token');
+      return localStorage.getItem('google_access_token');
     } catch {
       return null;
     }
   });
   const [userProfile, setUserProfile] = useState<GoogleUserProfile | null>(() => {
     try {
-      const saved = sessionStorage.getItem('google_user_profile');
+      const saved = localStorage.getItem('google_user_profile');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -108,11 +126,19 @@ export default function App() {
     }
 
     // Restore Google data if session token is active
-    const savedToken = sessionStorage.getItem('google_access_token');
+    const savedToken = localStorage.getItem('google_access_token');
     if (savedToken) {
       loadGoogleData(savedToken);
     }
   }, []);
+
+  useEffect(() => {
+    if (token && selectedListId) {
+      fetchTasks(token, selectedListId)
+        .then(setGoogleTasks)
+        .catch(err => console.error('Failed to fetch tasks on list change:', err));
+    }
+  }, [selectedListId, token]);
 
   const saveSchedule = (newSchedule: StudyTask[]) => {
     setSchedule(newSchedule);
@@ -317,7 +343,7 @@ export default function App() {
       if (profileResult.status === 'fulfilled' && profileResult.value) {
         setUserProfile(profileResult.value);
         try {
-          sessionStorage.setItem('google_user_profile', JSON.stringify(profileResult.value));
+          localStorage.setItem('google_user_profile', JSON.stringify(profileResult.value));
         } catch {
           // ignore
         }
@@ -404,7 +430,7 @@ export default function App() {
           if (response.access_token) {
             setToken(response.access_token);
             try {
-              sessionStorage.setItem('google_access_token', response.access_token);
+              localStorage.setItem('google_access_token', response.access_token);
             } catch {
               // ignore
             }
@@ -568,8 +594,8 @@ export default function App() {
     setGoogleTasks([]);
     setGoogleTasklists([]);
     try {
-      sessionStorage.removeItem('google_access_token');
-      sessionStorage.removeItem('google_user_profile');
+      localStorage.removeItem('google_access_token');
+      localStorage.removeItem('google_user_profile');
     } catch {
       // ignore
     }
@@ -835,43 +861,98 @@ export default function App() {
 
         {/* Calendar Tab */}
         {activeTab === 'calendar' && (
-          <div className="space-y-3">
-            <h2 className="text-xl font-semibold mb-4 text-white">Today's Events</h2>
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold mb-6 text-white flex items-center gap-2">
+              <Calendar className="text-[#00f2fe]" size={20} />
+              Today's Timeline
+            </h2>
             {isLoadingGoogle ? (
-              <p className="text-gray-400 text-center py-8">Loading calendar...</p>
+              <div className="flex justify-center py-8"><RefreshCw className="animate-spin text-[#00f2fe]" /></div>
             ) : calendarEvents.length > 0 ? (
-              calendarEvents.map(event => (
-                <div key={event.id} className="p-4 bg-[#222] rounded-lg border-l-4 border-blue-500">
-                  <div className="text-xs font-bold text-blue-400 mb-1">
-                    {formatTime(event.start.dateTime)} - {formatTime(event.end.dateTime)}
-                  </div>
-                  <h3 className="text-base text-white">{event.summary}</h3>
-                </div>
-              ))
+              <div className="relative pl-4 border-l-2 border-white/10 space-y-6">
+                {calendarEvents.map(event => {
+                  const colors = getCalendarColor(event.colorId);
+                  let isCurrent = false;
+                  if (event.start.dateTime && event.end.dateTime) {
+                    const now = new Date();
+                    isCurrent = now >= new Date(event.start.dateTime) && now <= new Date(event.end.dateTime);
+                  }
+                  return (
+                    <div key={event.id} className="relative group">
+                      {/* Timeline dot */}
+                      <div className={`absolute -left-[21px] top-4 w-3 h-3 rounded-full border-2 border-[#0a0a0c] ${colors.bg.replace('/20', '/100')} ${isCurrent ? 'ring-2 ring-white/50 animate-pulse bg-white' : ''}`} />
+                      
+                      <div className={`p-4 rounded-xl border ${colors.border} ${colors.bg} ${isCurrent ? 'ring-1 ring-white/20 shadow-lg' : ''} transition-all`}>
+                        <div className={`text-xs font-bold ${colors.text} mb-1.5 flex items-center justify-between`}>
+                          <span>{formatTime(event.start.dateTime)} - {formatTime(event.end.dateTime)}</span>
+                          {isCurrent && <span className="bg-white/20 text-white px-2 py-0.5 rounded-full text-[10px] tracking-wider uppercase">Now</span>}
+                        </div>
+                        <h3 className="text-base text-white font-medium">{event.summary}</h3>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="text-gray-400 text-center py-8">No events scheduled for today.</p>
+              <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-xl">
+                <Calendar className="mx-auto text-gray-600 mb-3" size={32} />
+                <p className="text-gray-400">No events scheduled for today.</p>
+              </div>
             )}
           </div>
         )}
 
         {/* Tasks Tab */}
         {activeTab === 'tasks' && (
-          <div className="space-y-3">
-            <h2 className="text-xl font-semibold mb-4 text-white">Google Tasks</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                <CheckSquare className="text-[#00f2fe]" size={20} />
+                Google Tasks
+              </h2>
+              {googleTasklists.length > 0 && (
+                <select 
+                  value={selectedListId} 
+                  onChange={(e) => setSelectedListId(e.target.value)}
+                  className="bg-[#111] text-xs text-gray-300 border border-[#333] rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00f2fe]"
+                >
+                  {googleTasklists.map(list => (
+                    <option key={list.id} value={list.id}>{list.title}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
             {isLoadingGoogle ? (
-              <p className="text-gray-400 text-center py-8">Loading tasks...</p>
+              <div className="flex justify-center py-8"><RefreshCw className="animate-spin text-[#00f2fe]" /></div>
             ) : googleTasks.length > 0 ? (
-              googleTasks.map(task => (
-                <div key={task.id} className="flex items-start p-4 bg-[#222] rounded-lg">
-                  <CheckSquare size={20} className="text-gray-500 mr-3 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h3 className="text-base text-white">{task.title}</h3>
-                    {task.notes && <p className="text-sm text-[#bbb] mt-1 whitespace-pre-wrap">{task.notes}</p>}
+              <div className="space-y-2">
+                {googleTasks.map(task => (
+                  <div key={task.id} className="group flex items-start p-3.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-colors">
+                    <button 
+                      onClick={() => {
+                        if (token && selectedListId) {
+                          setGoogleTasks(prev => prev.filter(t => t.id !== task.id));
+                          updateGoogleTask(token, selectedListId, task.id, 'completed').catch(err => console.error(err));
+                        }
+                      }}
+                      className="text-gray-500 hover:text-[#00f2fe] mr-3 mt-0.5 flex-shrink-0 transition-colors cursor-pointer"
+                      title="Mark as completed"
+                    >
+                      <Circle size={20} />
+                    </button>
+                    <div>
+                      <h3 className="text-sm text-gray-200 group-hover:text-white transition-colors">{task.title}</h3>
+                      {task.notes && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{task.notes}</p>}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             ) : (
-              <p className="text-gray-400 text-center py-8">No active tasks found.</p>
+              <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-xl">
+                <CheckSquare className="mx-auto text-gray-600 mb-3" size={32} />
+                <p className="text-gray-400">No active tasks found in this list.</p>
+              </div>
             )}
           </div>
         )}
