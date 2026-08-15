@@ -692,20 +692,12 @@ export default function App() {
               Protocol
             </button>
             {token && (
-              <>
-                <button 
-                  onClick={() => setActiveTab('calendar')}
-                  className={`min-h-[48px] px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'calendar' ? 'bg-[#ffffff15] text-[#00f2fe] shadow-[0_0_10px_rgba(0,242,254,0.1)]' : 'text-gray-400 hover:text-white hover:bg-[#ffffff0a]'}`}
-                >
-                  <Calendar size={16} /> Calendar
-                </button>
-                <button 
-                  onClick={() => setActiveTab('tasks')}
-                  className={`min-h-[48px] px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'tasks' ? 'bg-[#ffffff15] text-[#00f2fe] shadow-[0_0_10px_rgba(0,242,254,0.1)]' : 'text-gray-400 hover:text-white hover:bg-[#ffffff0a]'}`}
-                >
-                  <CheckSquare size={16} /> Tasks
-                </button>
-              </>
+              <button 
+                onClick={() => setActiveTab('calendar')}
+                className={`min-h-[48px] px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'calendar' ? 'bg-[#ffffff15] text-[#00f2fe] shadow-[0_0_10px_rgba(0,242,254,0.1)]' : 'text-gray-400 hover:text-white hover:bg-[#ffffff0a]'}`}
+              >
+                <Calendar size={16} /> Calendar
+              </button>
             )}
             <button 
               onClick={() => setActiveTab('analytics')}
@@ -728,135 +720,166 @@ export default function App() {
 
         {/* Protocol Tab */}
         {activeTab === 'protocol' && (
-          <>
-            {token && googleTasklists.length > 0 && (
-              <div className="bg-[#ffffff05] border border-[#ffffff10] rounded-xl p-4 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-300">Import from Google Tasks</span>
-                  <span className="text-xs text-gray-500">Map your existing tasks to today's protocol.</span>
-                </div>
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <select 
-                    value={selectedListId} 
-                    onChange={(e) => setSelectedListId(e.target.value)}
-                    className="bg-[#111] text-sm text-gray-300 border border-[#333] rounded-lg px-3 py-2 flex-grow sm:flex-grow-0 min-w-[150px] focus:outline-none focus:border-[#00f2fe]"
-                  >
-                    {googleTasklists.map(list => (
-                      <option key={list.id} value={list.id}>{list.title}</option>
-                    ))}
-                  </select>
+          <div className={`grid grid-cols-1 ${token ? 'lg:grid-cols-[1.5fr_1fr] gap-8' : 'gap-4'}`}>
+            <div className="flex flex-col">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white">Daily Protocol</h2>
+                <div className="flex gap-2">
+                  {token && schedule.length > 0 && (
+                    <button
+                      onClick={syncToGoogle}
+                      disabled={isSyncing}
+                      className="flex items-center gap-2 bg-[#0055ff]/10 text-[#5588ff] hover:bg-[#0055ff]/20 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-[#0055ff]/20 disabled:opacity-50"
+                    >
+                      <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+                      {isSyncing ? 'Syncing...' : 'Sync to Calendar'}
+                    </button>
+                  )}
                   <button
-                    onClick={importFromGoogleTasks}
-                    disabled={isImporting}
-                    className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-black px-4 py-2 rounded-lg text-sm font-semibold transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 whitespace-nowrap"
+                    onClick={() => { setEditingTask(undefined); setIsModalOpen(true); }}
+                    className="flex items-center gap-2 bg-[#00ffcc]/10 text-[#00ffcc] hover:bg-[#00ffcc]/20 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-[#00ffcc]/30"
                   >
-                    {isImporting ? (
-                      <><RefreshCw size={16} className="animate-spin" /> Importing...</>
-                    ) : (
-                      'Sync Tasks'
-                    )}
+                    <Plus size={16} /> Add Task
                   </button>
                 </div>
               </div>
-            )}
-            
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-white">Daily Protocol</h2>
-              <div className="flex gap-2">
-                {token && schedule.length > 0 && (
-                  <button
-                    onClick={syncToGoogle}
-                    disabled={isSyncing}
-                    className="flex items-center gap-2 bg-[#0055ff]/10 text-[#5588ff] hover:bg-[#0055ff]/20 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-[#0055ff]/20 disabled:opacity-50"
-                  >
-                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-                    {isSyncing ? 'Syncing...' : 'Sync to Google'}
-                  </button>
-                )}
-                <button
-                  onClick={() => { setEditingTask(undefined); setIsModalOpen(true); }}
-                  className="flex items-center gap-2 bg-[#00ffcc]/10 text-[#00ffcc] hover:bg-[#00ffcc]/20 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-[#00ffcc]/30"
-                >
-                  <Plus size={16} /> Add Task
-                </button>
-              </div>
-            </div>
-            {syncStatus && (
-              <div className="mb-4 text-sm text-center py-2 rounded bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20">
-                {syncStatus}
-              </div>
-            )}
-
-            <div className="w-full bg-[#333] rounded-lg mb-6 overflow-hidden h-5">
-              <div 
-                className="h-full bg-[#00ffcc] transition-all duration-500 ease-out" 
-                style={{ width: `${percentage}%`, boxShadow: '0 0 10px rgba(0, 255, 204, 0.5)' }}
-              />
-            </div>
-            <div className="text-center text-sm text-[#aaa] -mt-4 mb-6">
-              {percentage}% Completed ({completedCount}/{totalTasks})
-            </div>
-
-            <div className="w-full">
-              {schedule.length === 0 ? (
-                <div className="text-center text-gray-500 py-8 border border-dashed border-[#333] rounded-lg">
-                  No tasks scheduled. Add one to get started!
+              
+              {syncStatus && (
+                <div className="mb-4 text-sm text-center py-2 rounded bg-[#00ffcc]/10 text-[#00ffcc] border border-[#00ffcc]/20">
+                  {syncStatus}
                 </div>
-              ) : (
-                <DndContext 
-                  sensors={sensors} 
-                  collisionDetection={closestCenter} 
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onDragCancel={handleDragCancel}
-                  modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-                  autoScroll={{
-                    threshold: {
-                      x: 0,
-                      y: 0.15,
-                    },
-                    acceleration: 15,
-                    interval: 10,
-                  }}
-                >
-                  <div className="relative space-y-3 min-h-[60px]">
-                    <SortableContext items={schedule.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                      {schedule.map(task => (
-                        <SortableTaskItem
-                          key={task.id}
-                          task={task}
-                          isCompleted={completedTasks[task.id]}
-                          toggleTask={toggleTask}
-                          setEditingTask={setEditingTask}
-                          setIsModalOpen={setIsModalOpen}
-                          handleDeleteTask={handleDeleteTask}
-                        />
-                      ))}
-                    </SortableContext>
-                  </div>
-                  <DragOverlay 
-                    dropAnimation={{
-                      duration: 220,
-                      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-                    }}
-                    adjustScale={false}
-                  >
-                    {activeId ? (
-                      <SortableTaskItem
-                        task={schedule.find(t => t.id === activeId)!}
-                        isCompleted={completedTasks[activeId]}
-                        toggleTask={() => {}}
-                        setEditingTask={() => {}}
-                        setIsModalOpen={() => {}}
-                        handleDeleteTask={() => {}}
-                        isOverlay={true}
-                      />
-                    ) : null}
-                  </DragOverlay>
-                </DndContext>
               )}
+
+              <div className="w-full bg-[#333] rounded-lg mb-6 overflow-hidden h-4">
+                <div 
+                  className="h-full bg-[#00ffcc] transition-all duration-500 ease-out" 
+                  style={{ width: `${percentage}%`, boxShadow: '0 0 10px rgba(0, 255, 204, 0.5)' }}
+                />
+              </div>
+              <div className="text-center text-xs text-[#aaa] -mt-4 mb-6">
+                {percentage}% Completed ({completedCount}/{totalTasks})
+              </div>
+
+              <div className="w-full">
+                {schedule.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8 border border-dashed border-[#333] rounded-lg">
+                    No tasks scheduled. Add one to get started!
+                  </div>
+                ) : (
+                  <DndContext 
+                    sensors={sensors} 
+                    collisionDetection={closestCenter} 
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={handleDragCancel}
+                    modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+                    autoScroll={{
+                      threshold: { x: 0, y: 0.15 },
+                      acceleration: 15,
+                      interval: 10,
+                    }}
+                  >
+                    <div className="relative space-y-3 min-h-[60px]">
+                      <SortableContext items={schedule.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                        {schedule.map(task => (
+                          <SortableTaskItem
+                            key={task.id}
+                            task={task}
+                            isCompleted={completedTasks[task.id]}
+                            toggleTask={toggleTask}
+                            setEditingTask={setEditingTask}
+                            setIsModalOpen={setIsModalOpen}
+                            handleDeleteTask={handleDeleteTask}
+                          />
+                        ))}
+                      </SortableContext>
+                    </div>
+                    <DragOverlay 
+                      dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}
+                      adjustScale={false}
+                    >
+                      {activeId ? (
+                        <SortableTaskItem
+                          task={schedule.find(t => t.id === activeId)!}
+                          isCompleted={completedTasks[activeId]}
+                          toggleTask={() => {}}
+                          setEditingTask={() => {}}
+                          setIsModalOpen={() => {}}
+                          handleDeleteTask={() => {}}
+                          isOverlay={true}
+                        />
+                      ) : null}
+                    </DragOverlay>
+                  </DndContext>
+                )}
+              </div>
             </div>
-          </>
+
+            {token && (
+              <div className="flex flex-col bg-[#ffffff02] rounded-2xl p-4 border border-white/5 h-fit">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <CheckSquare className="text-[#00f2fe]" size={18} />
+                    Google Tasks
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    {googleTasklists.length > 0 && (
+                      <select 
+                        value={selectedListId} 
+                        onChange={(e) => setSelectedListId(e.target.value)}
+                        className="bg-[#111] text-xs text-gray-300 border border-[#333] rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00f2fe] max-w-[120px] truncate"
+                      >
+                        {googleTasklists.map(list => (
+                          <option key={list.id} value={list.id}>{list.title}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      onClick={importFromGoogleTasks}
+                      disabled={isImporting}
+                      className="flex items-center justify-center gap-1.5 bg-[#ffffff0a] hover:bg-[#ffffff15] text-[#00f2fe] px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border border-white/10 disabled:opacity-50"
+                      title="Import these tasks into your Daily Protocol"
+                    >
+                      <RefreshCw size={12} className={isImporting ? "animate-spin" : ""} />
+                      Import
+                    </button>
+                  </div>
+                </div>
+                
+                {isLoadingGoogle ? (
+                  <div className="flex justify-center py-8"><RefreshCw className="animate-spin text-[#00f2fe]" /></div>
+                ) : googleTasks.length > 0 ? (
+                  <div className="space-y-2 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" style={{ maxHeight: 'calc(100vh - 350px)' }}>
+                    {googleTasks.map(task => (
+                      <div key={task.id} className="group flex items-start p-3 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded-xl transition-colors">
+                        <button 
+                          onClick={() => {
+                            if (token && selectedListId) {
+                              setGoogleTasks(prev => prev.filter(t => t.id !== task.id));
+                              updateGoogleTask(token, selectedListId, task.id, 'completed').catch(err => console.error(err));
+                            }
+                          }}
+                          className="text-gray-500 hover:text-[#00f2fe] mr-3 mt-0.5 flex-shrink-0 transition-colors cursor-pointer"
+                          title="Mark as completed in Google Tasks"
+                        >
+                          <Circle size={18} />
+                        </button>
+                        <div>
+                          <h3 className="text-sm text-gray-200 group-hover:text-white transition-colors leading-snug">{task.title}</h3>
+                          {task.notes && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{task.notes}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10 bg-white/[0.01] border border-white/5 rounded-xl mt-2">
+                    <CheckSquare className="mx-auto text-gray-600 mb-3" size={28} />
+                    <p className="text-xs text-gray-400">No active tasks found.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Calendar Tab */}
@@ -902,60 +925,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Tasks Tab */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <CheckSquare className="text-[#00f2fe]" size={20} />
-                Google Tasks
-              </h2>
-              {googleTasklists.length > 0 && (
-                <select 
-                  value={selectedListId} 
-                  onChange={(e) => setSelectedListId(e.target.value)}
-                  className="bg-[#111] text-xs text-gray-300 border border-[#333] rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00f2fe]"
-                >
-                  {googleTasklists.map(list => (
-                    <option key={list.id} value={list.id}>{list.title}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            
-            {isLoadingGoogle ? (
-              <div className="flex justify-center py-8"><RefreshCw className="animate-spin text-[#00f2fe]" /></div>
-            ) : googleTasks.length > 0 ? (
-              <div className="space-y-2">
-                {googleTasks.map(task => (
-                  <div key={task.id} className="group flex items-start p-3.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-colors">
-                    <button 
-                      onClick={() => {
-                        if (token && selectedListId) {
-                          setGoogleTasks(prev => prev.filter(t => t.id !== task.id));
-                          updateGoogleTask(token, selectedListId, task.id, 'completed').catch(err => console.error(err));
-                        }
-                      }}
-                      className="text-gray-500 hover:text-[#00f2fe] mr-3 mt-0.5 flex-shrink-0 transition-colors cursor-pointer"
-                      title="Mark as completed"
-                    >
-                      <Circle size={20} />
-                    </button>
-                    <div>
-                      <h3 className="text-sm text-gray-200 group-hover:text-white transition-colors">{task.title}</h3>
-                      {task.notes && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{task.notes}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-xl">
-                <CheckSquare className="mx-auto text-gray-600 mb-3" size={32} />
-                <p className="text-gray-400">No active tasks found in this list.</p>
-              </div>
-            )}
-          </div>
-        )}
+
 
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
