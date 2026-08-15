@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Calendar, CheckSquare, LogOut, CheckCircle2, Circle, Activity, Plus, Edit2, Trash2, RefreshCw } from 'lucide-react';
-import { StudyTask, GoogleCalendarEvent, GoogleTask, GoogleTasksList } from './types';
-import { fetchCalendarEvents, fetchTaskLists, fetchTasks, createCalendarEvent, createGoogleTask, updateGoogleTask } from './lib/google-api';
+import { Calendar, CheckSquare, LogOut, CheckCircle2, Circle, Activity, Plus, Edit2, Trash2, RefreshCw, AlertTriangle, X, User } from 'lucide-react';
+import { StudyTask, GoogleCalendarEvent, GoogleTask, GoogleTasksList, GoogleUserProfile } from './types';
+import { fetchCalendarEvents, fetchTaskLists, fetchTasks, createCalendarEvent, createGoogleTask, updateGoogleTask, fetchUserProfile } from './lib/google-api';
 import { getAdjustedDate, getHistory, updateTodayProgress, getStreak, TrackerHistory, HistoryRecord } from './lib/history';
 import { format, subDays, parseISO } from 'date-fns';
 import { TaskModal } from './components/TaskModal';
@@ -45,7 +45,21 @@ const DEFAULT_SCHEDULE: StudyTask[] = [
 export default function App() {
   const [schedule, setSchedule] = useState<StudyTask[]>([]);
   const [completedTasks, setCompletedTasks] = useState<Record<string, boolean>>({});
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('google_access_token');
+    } catch {
+      return null;
+    }
+  });
+  const [userProfile, setUserProfile] = useState<GoogleUserProfile | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('google_user_profile');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [history, setHistory] = useState<TrackerHistory>({});
   
   const [calendarEvents, setCalendarEvents] = useState<GoogleCalendarEvent[]>([]);
@@ -53,9 +67,11 @@ export default function App() {
   const [googleTasklists, setGoogleTasklists] = useState<GoogleTasksList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string>('');
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>('');
+  const [googleError, setGoogleError] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState<'protocol' | 'calendar' | 'tasks' | 'analytics'>('protocol');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,6 +105,12 @@ export default function App() {
         state[task.id] = localStorage.getItem(`task_${task.id}`) === 'true';
       });
       setCompletedTasks(state);
+    }
+
+    // Restore Google data if session token is active
+    const savedToken = sessionStorage.getItem('google_access_token');
+    if (savedToken) {
+      loadGoogleData(savedToken);
     }
   }, []);
 
@@ -278,10 +300,75 @@ export default function App() {
   const percentage = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
   const streak = getStreak();
 
+  const loadGoogleData = async (accessToken: string) => {
+    setIsLoadingGoogle(true);
+    setGoogleError(null);
+    const errors: string[] = [];
+
+    try {
+      // Concurrently fetch profile, calendar events, and task lists
+      const [profileResult, eventsResult, listsResult] = await Promise.allSettled([
+        fetchUserProfile(accessToken),
+        fetchCalendarEvents(accessToken),
+        fetchTaskLists(accessToken),
+      ]);
+
+      // 1. Profile
+      if (profileResult.status === 'fulfilled' && profileResult.value) {
+        setUserProfile(profileResult.value);
+        try {
+          sessionStorage.setItem('google_user_profile', JSON.stringify(profileResult.value));
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. Calendar Events
+      if (eventsResult.status === 'fulfilled') {
+        setCalendarEvents(eventsResult.value);
+      } else {
+        const msg = (eventsResult.reason as Error)?.message || 'Failed to load Calendar events';
+        errors.push(`Calendar: ${msg}`);
+      }
+
+      // 3. Task Lists
+      if (listsResult.status === 'fulfilled') {
+        const lists = listsResult.value;
+        setGoogleTasklists(lists);
+        if (lists.length > 0) {
+          const defaultListId = selectedListId || lists[0].id;
+          setSelectedListId(defaultListId);
+          try {
+            const tasks = await fetchTasks(accessToken, defaultListId);
+            setGoogleTasks(tasks);
+          } catch (taskErr: any) {
+            errors.push(`Tasks: ${taskErr.message || 'Failed to load tasks'}`);
+          }
+        }
+      } else {
+        const msg = (listsResult.reason as Error)?.message || 'Failed to load Task lists';
+        errors.push(`Tasks: ${msg}`);
+      }
+
+      if (errors.length > 0) {
+        setGoogleError(
+          errors.join(' | ') + '. (Note: Ensure Google Calendar API & Google Tasks API are enabled in your Google Cloud Console).'
+        );
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch google data:', err);
+      setGoogleError(err.message || 'Unable to communicate with Google services.');
+    } finally {
+      setIsLoadingGoogle(false);
+    }
+  };
+
   // Google Integration
   const handleGoogleLogin = useCallback(() => {
+    setGoogleError(null);
+
     if (!window.google?.accounts?.oauth2) {
-      console.warn('Google Identity Services library is not loaded yet.');
+      setGoogleError('Google Sign-In library is still loading. Please wait a moment and try again.');
       return;
     }
 
@@ -291,57 +378,55 @@ export default function App() {
       '';
 
     if (!clientId) {
-      console.error('Missing Google OAuth Client ID.');
+      setGoogleError('Missing Google OAuth Client ID. Please set VITE_GOOGLE_CLIENT_ID in your environment variables.');
       return;
     }
+
+    setIsConnectingGoogle(true);
     
     try {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId, 
-        // Requesting full access to write events and tasks
-        scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks',
-        callback: (response: any) => {
+        scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid',
+        error_callback: (err: any) => {
+          setIsConnectingGoogle(false);
+          console.error('Google OAuth error callback:', err);
+          const errorMsg = err?.message || (err?.type ? `OAuth issue: ${err.type}` : 'Sign-in popup was closed or blocked.');
+          setGoogleError(errorMsg);
+        },
+        callback: async (response: any) => {
+          setIsConnectingGoogle(false);
           if (response.error) {
-            console.error('OAuth error:', response);
+            console.error('OAuth response error:', response);
+            setGoogleError(`Sign-in error: ${response.error_description || response.error}`);
             return;
           }
           if (response.access_token) {
             setToken(response.access_token);
-            loadGoogleData(response.access_token);
+            try {
+              sessionStorage.setItem('google_access_token', response.access_token);
+            } catch {
+              // ignore
+            }
+            setSyncStatus('Connected to Google! Syncing data...');
+            await loadGoogleData(response.access_token);
+            setTimeout(() => setSyncStatus(''), 4000);
           }
         },
       });
-      client.requestAccessToken();
-    } catch (err) {
+      client.requestAccessToken({ prompt: 'consent' });
+    } catch (err: any) {
+      setIsConnectingGoogle(false);
       console.error('Failed to initialize Google token client:', err);
+      setGoogleError(`Sign-in initialization failed: ${err.message || 'Unknown error'}`);
     }
-  }, []);
-
-  const loadGoogleData = async (accessToken: string) => {
-    setIsLoadingGoogle(true);
-    try {
-      const events = await fetchCalendarEvents(accessToken);
-      setCalendarEvents(events);
-      
-      const lists = await fetchTaskLists(accessToken);
-      setGoogleTasklists(lists);
-      if (lists.length > 0) {
-        setSelectedListId(lists[0].id);
-        const tasks = await fetchTasks(accessToken, lists[0].id);
-        setGoogleTasks(tasks);
-      }
-    } catch (err) {
-      console.error('Failed to fetch google data:', err);
-    } finally {
-      setIsLoadingGoogle(false);
-    }
-  };
+  }, [selectedListId]);
 
   const syncToGoogle = async () => {
     if (!token || schedule.length === 0) return;
     
     setIsSyncing(true);
-    setSyncStatus('Syncing...');
+    setSyncStatus('Syncing to Google Calendar & Tasks...');
     try {
       const today = new Date();
       const tzOffset = -today.getTimezoneOffset();
@@ -355,7 +440,7 @@ export default function App() {
       
       let syncedCount = 0;
       for (const task of schedule) {
-        // e.g. "2023-10-25T09:00:00+05:30"
+        // e.g. "2026-08-15T09:00:00+05:30"
         const startISO = `${dateStr}T${task.startTime}:00${timezoneStr}`;
         const endISO = `${dateStr}T${task.endTime}:00${timezoneStr}`;
         
@@ -368,13 +453,14 @@ export default function App() {
         }
       }
       
-      setSyncStatus(`Synced ${syncedCount} items successfully!`);
-      // refresh data
+      setSyncStatus(`Synced ${syncedCount} items to Google Calendar & Tasks!`);
       await loadGoogleData(token);
       setTimeout(() => setSyncStatus(''), 4000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sync failed:', error);
-      setSyncStatus('Sync Failed - Retry');
+      setSyncStatus(`Sync Failed: ${error.message || 'Check permissions'}`);
+      setGoogleError(`Sync Failed: ${error.message || 'Check Google Calendar & Tasks permissions'}`);
+      setTimeout(() => setSyncStatus(''), 5000);
     } finally {
       setIsSyncing(false);
     }
@@ -384,13 +470,15 @@ export default function App() {
     if (!token || !selectedListId) return;
     
     setIsImporting(true);
-    setSyncStatus('Importing tasks...');
+    setSyncStatus('Importing tasks from Google...');
     
     try {
       const tasks = await fetchTasks(token, selectedListId);
+      setGoogleTasks(tasks);
+      
       if (tasks.length === 0) {
-        setSyncStatus('No tasks found to import.');
-        setTimeout(() => setSyncStatus(''), 3000);
+        setSyncStatus('No tasks found in this Google Task list.');
+        setTimeout(() => setSyncStatus(''), 4000);
         setIsImporting(false);
         return;
       }
@@ -451,26 +539,42 @@ export default function App() {
       updateTodayProgress(completedIds, newSchedule.length);
       setHistory(getHistory());
       
-      setSyncStatus(`Imported ${importedCount} tasks!`);
+      setSyncStatus(`Imported ${importedCount} tasks from Google!`);
       setTimeout(() => setSyncStatus(''), 4000);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to import tasks:', err);
-      setSyncStatus('Import failed.');
-      setTimeout(() => setSyncStatus(''), 4000);
+      setSyncStatus(`Import failed: ${err.message || 'Error fetching tasks'}`);
+      setGoogleError(`Google Tasks import failed: ${err.message || 'Check Tasks API permissions'}`);
+      setTimeout(() => setSyncStatus(''), 5000);
     } finally {
       setIsImporting(false);
     }
   };
 
   const handleLogout = () => {
-    if (token) {
-      window.google?.accounts.oauth2.revoke(token, () => {
-        setToken(null);
-        setCalendarEvents([]);
-        setGoogleTasks([]);
-      });
+    if (token && window.google?.accounts?.oauth2?.revoke) {
+      try {
+        window.google.accounts.oauth2.revoke(token, () => {
+          // Token revoked
+        });
+      } catch {
+        // ignore
+      }
     }
+    setToken(null);
+    setUserProfile(null);
+    setCalendarEvents([]);
+    setGoogleTasks([]);
+    setGoogleTasklists([]);
+    try {
+      sessionStorage.removeItem('google_access_token');
+      sessionStorage.removeItem('google_user_profile');
+    } catch {
+      // ignore
+    }
+    setSyncStatus('Disconnected from Google.');
+    setTimeout(() => setSyncStatus(''), 3000);
   };
 
   const formatTime = (isoString?: string) => {
@@ -481,18 +585,73 @@ export default function App() {
   return (
     <div className="w-full min-h-screen p-4 sm:p-8 flex flex-col items-center">
       <div className="w-full max-w-3xl bg-[#0a0a0c]/80 backdrop-blur-2xl rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/5 relative">
-        <h1 className="text-3xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#00f2fe] to-[#4facfe] tracking-wide filter drop-shadow-[0_0_8px_rgba(0,242,254,0.5)]">
+        <h1 className="text-3xl font-bold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-[#00f2fe] to-[#4facfe] tracking-wide filter drop-shadow-[0_0_8px_rgba(0,242,254,0.5)]">
           Night Owl Tracker
         </h1>
+        <p className="text-center text-xs text-gray-400 mb-6">Productivity Protocol & Focus Routine</p>
 
-        {!token && (
+        {/* Google Error / Diagnostics Notification */}
+        {googleError && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm flex items-start gap-3 relative">
+            <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-grow pr-6">
+              <p className="font-semibold mb-0.5">Google Integration Notice</p>
+              <p className="text-xs text-amber-200/90 leading-relaxed">{googleError}</p>
+            </div>
+            <button
+              onClick={() => setGoogleError(null)}
+              className="absolute right-3 top-3 text-amber-400 hover:text-amber-200 p-1"
+              aria-label="Dismiss error"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Google Connection Header */}
+        {!token ? (
           <div className="flex justify-center mb-8">
             <button 
               onClick={handleGoogleLogin}
-              className="min-h-[48px] flex items-center gap-2 bg-[#ffffff0a] hover:bg-[#ffffff15] text-white px-6 py-2 rounded-xl border border-white/10 transition-colors shadow-lg hover:shadow-[#00f2fe]/20"
+              disabled={isConnectingGoogle}
+              className="min-h-[48px] flex items-center gap-2.5 bg-[#ffffff0a] hover:bg-[#ffffff15] text-white px-6 py-2.5 rounded-xl border border-white/10 transition-all shadow-lg hover:shadow-[#00f2fe]/20 hover:border-[#00f2fe]/40 active:scale-95 disabled:opacity-50"
             >
-              <Calendar size={18} className="text-[#00f2fe]" />
-              Connect Google Calendar & Tasks
+              {isConnectingGoogle ? (
+                <RefreshCw size={18} className="text-[#00f2fe] animate-spin" />
+              ) : (
+                <Calendar size={18} className="text-[#00f2fe]" />
+              )}
+              <span>{isConnectingGoogle ? 'Connecting to Google...' : 'Connect Google Calendar & Tasks'}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 mb-6 text-sm">
+            <div className="flex items-center gap-3">
+              {userProfile?.picture ? (
+                <img 
+                  src={userProfile.picture} 
+                  alt="Profile" 
+                  referrerPolicy="no-referrer"
+                  className="w-8 h-8 rounded-full border border-[#00f2fe]/50 object-cover" 
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#00f2fe]/20 text-[#00f2fe] flex items-center justify-center font-bold text-xs">
+                  {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : <User size={14} />}
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="text-white text-xs font-semibold flex items-center gap-1.5">
+                  {userProfile?.name || 'Google Connected'}
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                </span>
+                <span className="text-[11px] text-gray-400">{userProfile?.email || 'Calendar & Tasks Sync Active'}</span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg border border-transparent hover:border-red-500/20 transition-all flex items-center gap-1"
+            >
+              <LogOut size={13} /> Disconnect
             </button>
           </div>
         )}

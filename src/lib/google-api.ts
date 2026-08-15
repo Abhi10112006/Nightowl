@@ -1,17 +1,29 @@
-// Helper for exponential backoff retry
-async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 500): Promise<Response> {
+// Helper for robust API calls with clear error messages and safe retry for transient errors
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2, backoff = 500): Promise<Response> {
   try {
     const response = await fetch(url, options);
     if (response.ok) return response;
     
-    // Retry on 429 (Rate Limit) or 5xx server errors
+    // Only retry on Rate Limit (429) or transient server errors (5xx)
     if ((response.status === 429 || response.status >= 500) && retries > 0) {
       await new Promise(res => setTimeout(res, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-  } catch (error) {
-    if (retries > 0) {
+    
+    let errorDetail = `Status ${response.status} (${response.statusText})`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.error?.message) {
+        errorDetail = errJson.error.message;
+      }
+    } catch {
+      // Ignore JSON parse failure
+    }
+    
+    throw new Error(errorDetail);
+  } catch (error: any) {
+    if (retries > 0 && error?.name === 'TypeError') {
+      // Network connection failure retry
       await new Promise(res => setTimeout(res, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
@@ -19,11 +31,26 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3, ba
   }
 }
 
+export async function fetchUserProfile(token: string) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Could not load user profile info:', err);
+  }
+  return null;
+}
+
 export async function fetchCalendarEvents(token: string) {
   const timeMin = new Date();
   timeMin.setHours(0, 0, 0, 0); // Start of today
   const timeMax = new Date();
-  timeMax.setHours(23, 59, 59, 999); // End of today
+  timeMax.setDate(timeMax.getDate() + 1);
+  timeMax.setHours(23, 59, 59, 999); // Cover night owl late hours
 
   const response = await fetchWithRetry(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}&singleEvents=true&orderBy=startTime`,
@@ -109,3 +136,4 @@ export async function updateGoogleTask(token: string, tasklistId: string, taskId
   );
   return response.json();
 }
+

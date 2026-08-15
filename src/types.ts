@@ -31,6 +31,12 @@ export interface GoogleTasksList {
   title: string;
 }
 
+export interface GoogleUserProfile {
+  email?: string;
+  name?: string;
+  picture?: string;
+}
+
 declare global {
   interface Window {
     google: any;
