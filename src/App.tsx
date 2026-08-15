@@ -286,8 +286,8 @@ export default function App() {
     }
 
     const clientId =
-      (firebaseConfig as { oAuthClientId?: string })?.oAuthClientId ||
       import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+      (firebaseConfig as { oAuthClientId?: string })?.oAuthClientId ||
       '';
 
     if (!clientId) {
