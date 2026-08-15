@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Night Owl Study Tracker",
+  "description": "Night owl productivity and study routine protocol tracker with interactive drag-and-drop task ordering, analytics dashboard, and Google Calendar and Tasks integration.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

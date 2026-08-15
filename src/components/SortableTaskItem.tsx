@@ -35,18 +35,20 @@ export const SortableTaskItem: React.FC<SortableTaskItemProps> = ({
     disabled: Boolean(isOverlay),
     animateLayoutChanges: (args) => defaultAnimateLayoutChanges({ ...args, wasDragging: true }),
     transition: {
-      duration: 280,
-      easing: 'cubic-bezier(0.25, 1, 0.5, 1)', // Smooth Apple iOS spring curve
+      duration: 300,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)', // Apple iOS spring-like curve
     }
   });
 
   const priorityColor = task.priority === 'High' ? 'text-red-400' : task.priority === 'Medium' ? 'text-yellow-400' : 'text-blue-400';
   const priorityBorder = task.priority === 'High' ? 'border-l-red-400' : task.priority === 'Medium' ? 'border-l-yellow-400' : 'border-l-blue-400';
 
+  // 1. THE OVERLAY (The card actively being dragged under the user's finger)
+  // Added: scale-[1.03], -rotate-1, z-50, and a deeper floating shadow for that "lifted" premium feel.
   if (isOverlay) {
     return (
       <div
-        className="flex items-center p-4 bg-[#222] rounded-2xl border-l-4 border-[#00ffcc] relative shadow-[0_20px_45px_rgba(0,0,0,0.85),0_0_20px_rgba(0,255,204,0.35)] ring-1 ring-[#00ffcc]/70 cursor-grabbing select-none pointer-events-none"
+        className="flex items-center p-4 bg-[#2a2a2e] rounded-2xl border-l-4 border-[#00ffcc] relative shadow-[0_30px_60px_-15px_rgba(0,0,0,0.9),0_0_20px_rgba(0,255,204,0.15)] ring-1 ring-white/10 scale-[1.03] -rotate-1 cursor-grabbing select-none pointer-events-none z-50"
         style={{ width: '100%' }}
       >
         <div className="mr-4 flex-shrink-0 flex items-center justify-center w-12 h-12 text-[#00ffcc] rounded-full">
@@ -67,20 +69,12 @@ export const SortableTaskItem: React.FC<SortableTaskItemProps> = ({
           </h3>
           {task.desc && <p className="text-sm text-[#bbb] leading-relaxed line-clamp-1">{task.desc}</p>}
         </div>
-
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-60">
-          <div className="p-2 text-gray-400 rounded-lg">
-            <Edit2 size={16} />
-          </div>
-          <div className="p-2 text-gray-400 rounded-lg">
-            <Trash2 size={16} />
-          </div>
-        </div>
       </div>
     );
   }
 
-  // Placeholder slot in the list while dragging - exactly matching size of the real card
+  // 2. THE PLACEHOLDER (The empty slot left behind in the list while dragging)
+  // Changed to look like a smooth, recessed drop zone instead of a faded duplicate.
   if (isDragging) {
     return (
       <div
@@ -89,45 +83,32 @@ export const SortableTaskItem: React.FC<SortableTaskItemProps> = ({
           transform: CSS.Translate.toString(transform),
           transition,
         }}
-        className="flex items-center p-4 bg-[#141418] rounded-2xl border-2 border-dashed border-[#00ffcc]/40 opacity-30 select-none pointer-events-none"
+        className="flex items-center p-4 bg-black/20 rounded-2xl border-2 border-dashed border-white/10 opacity-60 select-none pointer-events-none"
       >
-        <div className="mr-4 flex-shrink-0 flex items-center justify-center w-12 h-12 text-[#00ffcc]/40 rounded-full">
-          {isCompleted ? <CheckCircle2 size={30} /> : <Circle size={30} />}
-        </div>
-
-        <div className="flex-grow pr-20">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="text-xs font-bold text-[#00ffcc]/60">
-              {task.startTime} - {task.endTime}
-            </div>
-            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm bg-[#111] ${priorityColor} opacity-50`}>
-              {task.priority}
-            </span>
-          </div>
-          <h3 className="text-base font-medium mb-1 text-[#e0e0e0]/50">
-            {task.title}
-          </h3>
-          {task.desc && <p className="text-sm text-[#bbb]/40 leading-relaxed line-clamp-1">{task.desc}</p>}
-        </div>
+        <div className="mr-4 flex-shrink-0 flex items-center justify-center w-12 h-12 opacity-0" />
+        <div className="flex-grow pr-20 h-[52px]" />
       </div>
     );
   }
 
-  // Normal resting item
   const style = {
     transform: CSS.Translate.toString(transform),
     transition,
   };
 
+  // 3. THE RESTING CARD (Normal state)
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
-      className={`group flex items-center p-4 bg-[#222] rounded-2xl transition-[background-color,border-color,box-shadow] duration-200 border-l-4 ${
+      // CRITICAL FIX: Prevents the iOS/Android text selection & context menu on long-press
+      onContextMenu={(e) => e.preventDefault()} 
+      className={`group flex items-center p-4 bg-[#222] rounded-2xl transition-all duration-300 ease-out border-l-4 ${
         isCompleted ? 'border-l-[#4CAF50] opacity-75' : priorityBorder
-      } relative shadow-md shadow-black/30 hover:shadow-lg hover:bg-[#272727] cursor-grab active:cursor-grabbing select-none touch-pan-y`}
+      } relative shadow-md shadow-black/30 hover:shadow-lg hover:bg-[#272727] cursor-grab active:cursor-grabbing 
+      select-none [-webkit-touch-callout:none]`}
     >
       <button
         type="button"
@@ -197,4 +178,3 @@ export const SortableTaskItem: React.FC<SortableTaskItemProps> = ({
     </div>
   );
 };
-

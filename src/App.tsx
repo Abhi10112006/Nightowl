@@ -13,6 +13,7 @@ import { TaskModal } from './components/TaskModal';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { SortableTaskItem } from './components/SortableTaskItem';
 import { UndoToast } from './components/UndoToast';
+import firebaseConfig from '../firebase-applet-config.json';
 import {
   DndContext,
   closestCenter,
@@ -25,7 +26,7 @@ import {
   TouchSensor,
   DragOverlay,
 } from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
@@ -279,22 +280,41 @@ export default function App() {
 
   // Google Integration
   const handleGoogleLogin = useCallback(() => {
-    if (!window.google) return;
+    if (!window.google?.accounts?.oauth2) {
+      console.warn('Google Identity Services library is not loaded yet.');
+      return;
+    }
+
+    const clientId =
+      (firebaseConfig as { oAuthClientId?: string })?.oAuthClientId ||
+      import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+      '';
+
+    if (!clientId) {
+      console.error('Missing Google OAuth Client ID.');
+      return;
+    }
     
-    const client = window.google.accounts.oauth2.initTokenClient({
-      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '', 
-      // Requesting full access to write events and tasks
-      scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks',
-      callback: (response: any) => {
-        if (response.error) {
-          console.error('OAuth error:', response);
-          return;
-        }
-        setToken(response.access_token);
-        loadGoogleData(response.access_token);
-      },
-    });
-    client.requestAccessToken();
+    try {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId, 
+        // Requesting full access to write events and tasks
+        scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks',
+        callback: (response: any) => {
+          if (response.error) {
+            console.error('OAuth error:', response);
+            return;
+          }
+          if (response.access_token) {
+            setToken(response.access_token);
+            loadGoogleData(response.access_token);
+          }
+        },
+      });
+      client.requestAccessToken();
+    } catch (err) {
+      console.error('Failed to initialize Google token client:', err);
+    }
   }, []);
 
   const loadGoogleData = async (accessToken: string) => {
@@ -604,7 +624,7 @@ export default function App() {
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
-                  modifiers={[restrictToVerticalAxis]}
+                  modifiers={[restrictToVerticalAxis, restrictToParentElement]}
                   autoScroll={{
                     threshold: {
                       x: 0,
