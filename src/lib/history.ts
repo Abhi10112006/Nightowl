@@ -7,10 +7,10 @@ export interface HistoryRecord {
 
 export type TrackerHistory = Record<string, HistoryRecord>;
 
-// 4:00 AM rollover logic
+// 2:00 AM rollover logic
 export function getAdjustedDate(): string {
   const now = new Date();
-  now.setHours(now.getHours() - 4);
+  now.setHours(now.getHours() - 2);
   return format(now, 'yyyy-MM-dd');
 }
 
@@ -27,7 +27,7 @@ export function getHistory(): TrackerHistory {
 function generateMockHistory(): TrackerHistory {
   const history: TrackerHistory = {};
   let dateObj = new Date();
-  dateObj.setHours(dateObj.getHours() - 4);
+  dateObj.setHours(dateObj.getHours() - 2);
 
   // Generate for past 180 days
   for (let i = 0; i <= 180; i++) {
@@ -76,7 +76,7 @@ export function getStreak(): number {
   const today = getAdjustedDate();
   let streak = 0;
   let dateObj = new Date();
-  dateObj.setHours(dateObj.getHours() - 4); // adjusted current date
+  dateObj.setHours(dateObj.getHours() - 2); // adjusted current date
 
   // Check today first
   const todayRecord = history[today];

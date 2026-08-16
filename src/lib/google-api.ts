@@ -46,11 +46,15 @@ export async function fetchUserProfile(token: string) {
 }
 
 export async function fetchCalendarEvents(token: string) {
-  const timeMin = new Date();
-  timeMin.setHours(0, 0, 0, 0); // Start of today
-  const timeMax = new Date();
+  const now = new Date();
+  const timeMin = new Date(now);
+  if (now.getHours() < 2) {
+    timeMin.setDate(timeMin.getDate() - 1);
+  }
+  timeMin.setHours(2, 0, 0, 0);
+
+  const timeMax = new Date(timeMin);
   timeMax.setDate(timeMax.getDate() + 1);
-  timeMax.setHours(23, 59, 59, 999); // Cover night owl late hours
 
   const response = await fetchWithRetry(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}&singleEvents=true&orderBy=startTime`,

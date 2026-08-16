@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, CheckSquare, LogOut, CheckCircle2, Circle, Activity, Plus, Edit2, Trash2, RefreshCw, AlertTriangle, X, User } from 'lucide-react';
 import { StudyTask, GoogleCalendarEvent, GoogleTask, GoogleTasksList, GoogleUserProfile } from './types';
 import { fetchCalendarEvents, fetchTaskLists, fetchTasks, createCalendarEvent, createGoogleTask, updateGoogleTask, fetchUserProfile } from './lib/google-api';
@@ -448,27 +449,41 @@ export default function App() {
     }
   }, [selectedListId]);
 
+  const getTaskISO = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const now = new Date();
+    
+    const baseDate = new Date(now);
+    if (baseDate.getHours() < 2) {
+      baseDate.setDate(baseDate.getDate() - 1);
+    }
+    
+    const taskDate = new Date(baseDate);
+    if (hours < 2) {
+      taskDate.setDate(taskDate.getDate() + 1);
+    }
+    
+    taskDate.setHours(hours, minutes, 0, 0);
+    
+    const tzOffset = -taskDate.getTimezoneOffset();
+    const dif = tzOffset >= 0 ? '+' : '-';
+    const pad = (num: number) => `${Math.floor(Math.abs(num))}`.padStart(2, '0');
+    const timezoneStr = `${dif}${pad(tzOffset / 60)}:${pad(tzOffset % 60)}`;
+    
+    const dateStr = format(taskDate, 'yyyy-MM-dd');
+    return `${dateStr}T${timeStr}:00${timezoneStr}`;
+  };
+
   const syncToGoogle = async () => {
     if (!token || schedule.length === 0) return;
     
     setIsSyncing(true);
     setSyncStatus('Syncing to Google Calendar & Tasks...');
     try {
-      const today = new Date();
-      const tzOffset = -today.getTimezoneOffset();
-      const dif = tzOffset >= 0 ? '+' : '-';
-      const pad = (num: number) => `${Math.floor(Math.abs(num))}`.padStart(2, '0');
-      // Format: +05:30
-      const timezoneStr = `${dif}${pad(tzOffset / 60)}:${pad(tzOffset % 60)}`;
-      
-      // Sync Calendar Events
-      const dateStr = format(today, 'yyyy-MM-dd');
-      
       let syncedCount = 0;
       for (const task of schedule) {
-        // e.g. "2026-08-15T09:00:00+05:30"
-        const startISO = `${dateStr}T${task.startTime}:00${timezoneStr}`;
-        const endISO = `${dateStr}T${task.endTime}:00${timezoneStr}`;
+        const startISO = getTaskISO(task.startTime);
+        const endISO = getTaskISO(task.endTime);
         
         await createCalendarEvent(token, `[Protocol] ${task.title}`, task.desc, startISO, endISO, Intl.DateTimeFormat().resolvedOptions().timeZone);
         syncedCount++;
@@ -554,6 +569,7 @@ export default function App() {
         importedCount++;
       }
       
+      newSchedule.sort((a, b) => a.startTime.localeCompare(b.startTime));
       saveSchedule(newSchedule);
       setCompletedTasks(newCompleted);
       // update local storage for completions
@@ -707,20 +723,19 @@ export default function App() {
             </button>
           </div>
           
-          {token && (
-            <button 
-              onClick={handleLogout}
-              className="text-gray-500 hover:text-[#ff0055] min-h-[48px] min-w-[48px] flex items-center justify-center rounded-xl hover:bg-[#ffffff0a] transition-colors"
-              title="Disconnect Google"
-            >
-              <LogOut size={16} />
-            </button>
-          )}
         </div>
 
+        <AnimatePresence mode="wait">
         {/* Protocol Tab */}
         {activeTab === 'protocol' && (
-          <div className={`grid grid-cols-1 ${token ? 'lg:grid-cols-[1.5fr_1fr] gap-8' : 'gap-4'}`}>
+          <motion.div 
+            key="protocol"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className={`grid grid-cols-1 ${token ? 'lg:grid-cols-[1.5fr_1fr] gap-8' : 'gap-4'}`}
+          >
             <div className="flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-white">Daily Protocol</h2>
@@ -750,14 +765,18 @@ export default function App() {
                 </div>
               )}
 
-              <div className="w-full bg-[#333] rounded-lg mb-6 overflow-hidden h-4">
-                <div 
-                  className="h-full bg-[#00ffcc] transition-all duration-500 ease-out" 
-                  style={{ width: `${percentage}%`, boxShadow: '0 0 10px rgba(0, 255, 204, 0.5)' }}
-                />
-              </div>
-              <div className="text-center text-xs text-[#aaa] -mt-4 mb-6">
-                {percentage}% Completed ({completedCount}/{totalTasks})
+              <div className="w-full bg-white/5 rounded-full mb-6 overflow-hidden h-5 relative border border-white/10 shadow-inner">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] relative"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${percentage}%` }}
+                  transition={{ duration: 1, ease: 'easeOut' }}
+                >
+                  <div className="absolute top-0 right-0 bottom-0 w-20 bg-gradient-to-r from-transparent to-white/30 mix-blend-overlay"></div>
+                </motion.div>
+                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white mix-blend-difference drop-shadow-md tracking-wider">
+                  {percentage}% COMPLETED ({completedCount}/{totalTasks})
+                </div>
               </div>
 
               <div className="w-full">
@@ -879,12 +898,19 @@ export default function App() {
                 )}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* Calendar Tab */}
         {activeTab === 'calendar' && (
-          <div className="space-y-4">
+          <motion.div 
+            key="calendar"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-4"
+          >
             <h2 className="text-xl font-semibold mb-6 text-white flex items-center gap-2">
               <Calendar className="text-[#00f2fe]" size={20} />
               Today's Timeline
@@ -922,15 +948,24 @@ export default function App() {
                 <p className="text-gray-400">No events scheduled for today.</p>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
 
 
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
-          <AnalyticsDashboard history={history} schedule={schedule} />
+          <motion.div
+            key="analytics"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <AnalyticsDashboard history={history} schedule={schedule} />
+          </motion.div>
         )}
+        </AnimatePresence>
 
       </div>
       <TaskModal 
