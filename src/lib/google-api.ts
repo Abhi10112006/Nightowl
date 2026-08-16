@@ -99,13 +99,25 @@ export async function fetchTaskLists(token: string) {
 
 export async function fetchTasks(token: string, tasklistId: string) {
   const response = await fetchWithRetry(
-    `https://tasks.googleapis.com/tasks/v1/lists/${tasklistId}/tasks?showCompleted=false`,
+    `https://tasks.googleapis.com/tasks/v1/lists/${tasklistId}/tasks?showCompleted=true&showHidden=true&maxResults=100`,
     {
       headers: { Authorization: `Bearer ${token}` },
     }
   );
   const data = await response.json();
   return data.items || [];
+}
+
+export async function deleteGoogleTask(token: string, tasklistId: string, taskId: string) {
+  const response = await fetchWithRetry(
+    `https://tasks.googleapis.com/tasks/v1/lists/${tasklistId}/tasks/${taskId}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (!response.ok && response.status !== 204) throw new Error('Failed to delete task');
+  return true;
 }
 
 export async function createGoogleTask(token: string, tasklistId: string, title: string, notes: string) {
@@ -126,7 +138,7 @@ export async function createGoogleTask(token: string, tasklistId: string, title:
   return response.json();
 }
 
-export async function updateGoogleTask(token: string, tasklistId: string, taskId: string, status: string) {
+export async function updateGoogleTask(token: string, tasklistId: string, taskId: string, updates: { status?: string, title?: string, notes?: string }) {
   const response = await fetchWithRetry(
     `https://tasks.googleapis.com/tasks/v1/lists/${tasklistId}/tasks/${taskId}`,
     {
@@ -135,7 +147,7 @@ export async function updateGoogleTask(token: string, tasklistId: string, taskId
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ status })
+      body: JSON.stringify(updates)
     }
   );
   return response.json();
